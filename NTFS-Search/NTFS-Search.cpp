@@ -112,6 +112,7 @@ int ProcessLoading(HWND hWnd, HWND hCombo, int reload);
 
 DWORD WINAPI LoadSearchInfo(LPVOID lParam);
 int SearchFiles(HWND hWnd, PDISKHANDLE disk, TCHAR *filename, bool deleted, SEARCHP* pat);
+int SearchFiles2(PDISKHANDLE disk, TCHAR *filename, bool deleted, SEARCHP* pat, std::vector<SearchResult> & outResults);
 int Search(HWND hWnd, int disk, TCHAR *filename, bool deleted);
 UINT ExecuteFile(HWND hWnd, LPWSTR str, USHORT flags);
 UINT ExecuteFileEx(HWND hWnd, const LPTSTR command, LPWSTR str, LPCTSTR dir, UINT show, USHORT flags);
@@ -136,6 +137,7 @@ void DeleteFiles(HWND hWnd, UINT flags);
 DWORD GetDllVersion(LPCTSTR lpszDllName);
 DWORD ShowError();
 
+bool TestFunction();
 
 int APIENTRY _tWinMain(HINSTANCE hInstance,
     HINSTANCE hPrevInstance,
@@ -186,6 +188,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     FileStrings = CreateHeap(0xffff * sizeof(SearchResult));
     PathStrings = CreateHeap(0xfff * MAX_PATH);
 
+    TestFunction();
+
     // Perform application initialization:
     if (InitInstance(hInstance, nCmdShow) == 0)
     {
@@ -193,6 +197,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     }
 
     hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_NTFSEARCH));
+
+
 
     // Main message loop:
     while (GetMessage(&msg, nullptr, 0, 0))
@@ -212,6 +218,41 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     return static_cast<int>(msg.wParam);
 }
 
+// --------------- PDA
+bool TestFunction()
+{
+//    return false;
+
+    LPCTSTR diskName = L"\\\\.\\C:";   //  name =    \\.\C:
+
+    PDISKHANDLE diskHandle = OpenDisk(diskName);
+    ULONGLONG resLoad = LoadMFT(diskHandle, FALSE /*complete*/);
+    if (resLoad == 0)
+        return false;
+
+    DWORD progressValue;
+    ParseMFT2(diskHandle, SEARCHINFO, &progressValue);
+
+    TCHAR* filename = L"*.ftxb";
+    SEARCHP* pat = StartSearch(filename, wcslen(filename));
+    if (pat != nullptr) 
+    {
+        std::vector<SearchResult> outResults;
+        DWORD ret = SearchFiles2(diskHandle, filename, false/*deleted*/, pat, outResults);
+
+        int pipo = 8;
+        pipo++;
+
+    }
+
+
+    CloseDisk(diskHandle);
+
+
+    int pipo = 8;
+    pipo++;
+}
+// --------------- PDA
 
 
 //
@@ -320,6 +361,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     hm = GetSubMenu(popup, 0);
     SetMenuDefaultItem(hm, 0, TRUE);
+
+//    TestFunction();
+
+
 
     //CreateDialogParam(hInst, (LPCTSTR)IDD_SEARCH, NULL, (DLGPROC)SearchDlg,0);
     DialogBox(hInst, MAKEINTRESOURCE(IDD_SEARCH), nullptr, (DLGPROC)SearchDlg);
@@ -1220,6 +1265,139 @@ int SearchFiles(HWND hWnd, PDISKHANDLE disk, TCHAR *filename, bool deleted, SEAR
     //SendMessage(hListView, WM_SETREDRAW,TRUE,0);
     return hit;
 }
+
+int SearchFiles2(PDISKHANDLE disk, TCHAR *filename, bool deleted, SEARCHP* pat, std::vector<SearchResult> & outResults)
+{
+    int hit = 0;
+    LVITEM item;
+    //PUCHAR data;
+    WCHAR tmp[0xffff];
+    SEARCHFILEINFO *info;
+    if (glSensitive == 0)
+    {
+        _wcslwr(filename);
+    }
+    info = disk->fFiles;
+
+    memset(&item, 0, sizeof(item));
+    item.mask = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
+
+    for (int i = 0; i < disk->filesSize; i++)
+    {
+        if (deleted || ((info[i].Flags & 0x1) != 0))
+        {
+            if (info[i].FileName != nullptr)
+            {
+                bool ok;
+                if (glSensitive == 0)
+                {
+                    //MessageBox(0,PSEARCHFILEINFO(data)->FileName,0,0);
+                    //wcscpy_s(tmp,info->FileName, info->FileNameLength);
+                    memcpy(tmp, info[i].FileName, info[i].FileNameLength * sizeof(TCHAR) + 2);
+                    _wcslwr(tmp);
+                    ok = SearchStr(pat, (wchar_t*)tmp, info[i].FileNameLength);
+                }
+                else
+                {
+                    ok = SearchStr(pat, const_cast<wchar_t*>(info[i].FileName), info[i].FileNameLength);
+                }
+                if (ok)
+                    //if (wcsstr(tmp, filename)!=NULL)
+                    //if (SearchString(tmp, PSEARCHFILEINFO(data)->FileNameLength, filename, len)==TRUE)
+                    //if (StringRegCompare(tmp, PSEARCHFILEINFO(data)->FileNameLength, filename, len)==TRUE)
+                {
+                    //SearchResult* res = &outResults[results_cnt++];
+                    const auto t = GetPath(disk, i);
+                    const auto s = wcslen(t);
+                    const auto filename = const_cast<LPTSTR>(info[i].FileName);
+                    const auto path = AllocAndCopyString(PathStrings, t, s);
+                    const auto icon = info[i].Flags;
+
+                    if (info[i].DataSize == 0 && info[i].Flags != 0x002) // not directory
+                    {
+                        WCHAR filePath[0x10000];
+                        PathCombineW(filePath, path, filename);
+                        HANDLE hFile = CreateFile(filePath,
+                            GENERIC_READ,
+                            FILE_SHARE_READ,
+                            NULL,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            NULL);
+                        if (hFile != INVALID_HANDLE_VALUE)
+                        {
+                            FILE_STANDARD_INFO fileInfo {};
+                            if (GetFileInformationByHandleEx(
+                                hFile,
+                                FileStandardInfo,
+                                &fileInfo,
+                                sizeof(fileInfo)))
+                            {
+                                info[i].DataSize = fileInfo.EndOfFile.QuadPart;
+                                info[i].AllocatedSize = fileInfo.AllocationSize.QuadPart;
+                            }
+
+                            CloseHandle(hFile);
+                        }
+                    }
+
+                    const auto dataSize = info[i].DataSize;
+                    const auto allocatedSize = info[i].AllocatedSize;
+
+                    //LPTSTR ret;
+                    LPTSTR extra;
+                    if ((info[i].Flags & 0x002) == 0)
+                    {
+                        auto ret = wcsrchr(filename, L'.');
+                        if (ret != nullptr) {
+                            extra = ret + 1;
+                        }
+                        else {
+                            extra = TEXT(" ");
+                        }
+                    }
+                    else
+                    {
+                        extra = TEXT(" ");
+                    }
+
+                    outResults.push_back({ icon, extra, filename, path, dataSize, allocatedSize });
+
+                    /*item.pszText = LPSTR_TEXTCALLBACK;//(LPWSTR)PSEARCHFILEINFO(data)->FileName;
+                    item.iItem	 = i;
+                    item.iImage = PSEARCHFILEINFO(data)->Flags;
+                    item.lParam = (LPARAM)res;
+                    */
+                    auto last = ListView_InsertItem(hListView, &item);
+
+                    //swprintf(tmp,L"%u",i);
+                //	ListView_SetItemText(hListView,last,1, LPSTR_TEXTCALLBACK);
+
+                    hit++;
+                    if (outResults.size() >= MAX_RESULTS_NUMBER)
+                    {
+                        //int res;
+                        //res = MessageBox(0, TEXT("Your search produces too many results!\nContinue your search?"), 0, MB_ICONINFORMATION | MB_TASKMODAL | MB_YESNO);
+                 //       MessageBox(hWnd, szTooMany/*TEXT("Your search produces too many results!")*/, nullptr, MB_ICONWARNING | MB_OK);
+                        //if (res!=IDYES)
+                        //{
+                            //SendMessage(hListView, WM_SETREDRAW,TRUE,0);						
+                        break;
+                        //}
+                    }
+                }
+            }
+
+        }
+        //data+=disk->IsLong;
+    }
+
+    //qsort(result, hit, sizeof(SearchResult),
+
+    //SendMessage(hListView, WM_SETREDRAW,TRUE,0);
+    return hit;
+}
+
 UINT ExecuteFile(HWND hWnd, LPWSTR str, USHORT flags)
 {
     UINT res;

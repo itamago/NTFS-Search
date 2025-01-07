@@ -256,6 +256,39 @@ DWORD ParseMFT(PDISKHANDLE disk, UINT option, PSTATUSINFO info)
     return 0;
 }
 
+DWORD ParseMFT2(PDISKHANDLE disk, UINT option, DWORD* progressValue)
+{
+    if (disk == nullptr) {
+        return 0;
+    }
+
+    if (disk->type == NTFSDISK)
+    {
+
+        CreateFixList();
+
+        auto fh = PFILE_RECORD_HEADER(disk->NTFS.MFT);
+        FixFileRecord(fh);
+
+        disk->IsLong = 1;//sizeof(SEARCHFILEINFO);
+
+        if (disk->heapBlock == nullptr) {
+            disk->heapBlock = CreateHeap(0x100000);
+        }
+        auto nattr = reinterpret_cast<PNONRESIDENT_ATTRIBUTE>(FindAttribute(fh, Data));
+        if (nattr != nullptr)
+        {
+            auto buffer = new UCHAR[CLUSTERSPERREAD*disk->NTFS.BytesPerCluster];
+            ReadMFTParse2(disk, nattr, 0, ULONG(nattr->HighVcn) + 1, buffer, nullptr, progressValue);
+            delete[] buffer;
+        }
+
+        ProcessFixList(disk);
+    }
+
+    return 0;
+}
+
 DWORD ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, PSTATUSINFO info)
 {
     ULONGLONG lcn, runcount;
@@ -284,6 +317,41 @@ DWORD ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn,
         else
         {
             ret += ReadMFTLCN(disk, lcn, readcount, buffer, fetch, info);
+        }
+        vcn += readcount;
+        bytes += n;
+    }
+    return ret;
+}
+
+DWORD ReadMFTParse2(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+{
+    ULONGLONG lcn, runcount;
+    ULONG readcount, left;
+    DWORD ret = 0;
+    auto bytes = PUCHAR(buffer);
+    //PUCHAR data;
+
+    int x = (disk->NTFS.entryCount + 16);//*sizeof(SEARCHFILEINFO);
+    //data = new UCHAR[x];
+    //memset(data, 0, x);
+    //disk->fFiles = (PSEARCHFILEINFO)data;
+    disk->fFiles = new SEARCHFILEINFO[x];
+    memset(disk->fFiles, 0, x * sizeof(SEARCHFILEINFO));
+
+    for (left = count; left > 0; left -= readcount)
+    {
+        FindRun(attr, vcn, &lcn, &runcount);
+        readcount = ULONG(min(runcount, left));
+        ULONG n = readcount * disk->NTFS.BytesPerCluster;
+        if (lcn == 0)
+        {
+            // spares file?
+            memset(bytes, 0, n);
+        }
+        else
+        {
+            ret += ReadMFTLCN2(disk, lcn, readcount, buffer, fetch, progressValue);
         }
         vcn += readcount;
         bytes += n;
@@ -378,6 +446,38 @@ DWORD ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FET
     ReadFile(disk->fileHandle, buffer, (count - c)*disk->NTFS.BytesPerCluster, &read, nullptr);
     ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read, fetch);
     CallMe(info, disk->filesSize);
+
+    pos += read;
+    return pos;
+}
+
+DWORD ReadMFTLCN2(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+{
+    LARGE_INTEGER offset;
+    DWORD read = 0;
+    //DWORD ret=0;
+    DWORD cnt = 0, c = 0, pos = 0;
+
+    offset.QuadPart = lcn*disk->NTFS.BytesPerCluster;
+    SetFilePointer(disk->fileHandle, offset.LowPart, &offset.HighPart, FILE_BEGIN);
+
+    cnt = count / CLUSTERSPERREAD;
+
+    for (int i = 1; i <= cnt; i++)
+    {
+
+        ReadFile(disk->fileHandle, buffer, CLUSTERSPERREAD*disk->NTFS.BytesPerCluster, &read, nullptr);
+        c += CLUSTERSPERREAD;
+        pos += read;
+
+        ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read, fetch);
+        *progressValue = disk->filesSize;
+
+    }
+
+    ReadFile(disk->fileHandle, buffer, (count - c)*disk->NTFS.BytesPerCluster, &read, nullptr);
+    ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read, fetch);
+    *progressValue = disk->filesSize;
 
     pos += read;
     return pos;
