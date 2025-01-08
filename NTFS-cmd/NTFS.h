@@ -255,14 +255,6 @@ typedef struct
 	};
 }DISKHANDLE, *PDISKHANDLE;
 
-typedef struct
-{
-	HWND hWnd;
-	DWORD Value;
-}STATUSINFO, *PSTATUSINFO;
-
-VOID CallMe(PSTATUSINFO info, DWORD value);
-
 /* MY FUNCTIONS
 
 */
@@ -274,42 +266,33 @@ VOID CallMe(PSTATUSINFO info, DWORD value);
 
 typedef DWORD(__cdecl *FETCHPROC)(PDISKHANDLE, PFILE_RECORD_HEADER, PUCHAR);
 
-
+// Functions
 PDISKHANDLE OpenDisk(LPCTSTR disk);
 PDISKHANDLE OpenDisk(WCHAR DosDevice);
 
-BOOL CloseDisk(PDISKHANDLE disk);
-ULONGLONG LoadMFT(PDISKHANDLE disk, BOOL complete);
-BOOL FixFileRecord(PFILE_RECORD_HEADER file);
+BOOL		CloseDisk(PDISKHANDLE disk);
+ULONGLONG	LoadMFT(PDISKHANDLE disk, BOOL complete);
 
-DWORD ReadNextCluster(PDISKHANDLE disk, PVOID buffer); 
-PUCHAR FindAttribute(PDISKHANDLE disk, ATTRIBUTE_TYPE type);
-PATTRIBUTE FindAttribute(PFILE_RECORD_HEADER file, ATTRIBUTE_TYPE type);
-PATTRIBUTE FindNextAttribute(PATTRIBUTE att, ATTRIBUTE_TYPE type);
-LPCWSTR GetFileName(PFILE_RECORD_HEADER file);
-PFILENAME_ATTRIBUTE FindFileName(PFILE_RECORD_HEADER file, USHORT type);
+DWORD		ParseMFT(PDISKHANDLE disk, UINT option, DWORD* progressValue);
+BOOL		ReparseDisk(PDISKHANDLE disk, UINT option, DWORD* progressValue);
 
-DWORD ParseMFT(PDISKHANDLE disk, UINT option, PSTATUSINFO info);
-DWORD ParseMFT2(PDISKHANDLE disk, UINT option, DWORD* progressValue);
+LPWSTR		GetPath(PDISKHANDLE disk, int id);
 
+// Internal
+BOOL		FixFileRecord(PFILE_RECORD_HEADER file);
 
-LPWSTR GetPath(PDISKHANDLE disk, int id);
+PATTRIBUTE	FindAttribute(PFILE_RECORD_HEADER file, ATTRIBUTE_TYPE type);
+
+BOOL		FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* data);
+
+ULONG		RunLength(PUCHAR run);
+LONGLONG	RunLCN(PUCHAR run);
+ULONGLONG	RunCount(PUCHAR run);
+BOOL		FindRun(PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, PULONGLONG lcn, PULONGLONG count);
+DWORD		ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
+DWORD		ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
+DWORD		ProcessBuffer(PDISKHANDLE disk, PUCHAR buffer, DWORD size, FETCHPROC fetch);
+
+#if 0
 LPWSTR GetCompletePath(PDISKHANDLE disk, int id);
-BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* data);
-
-ULONG RunLength(PUCHAR run);
-LONGLONG RunLCN(PUCHAR run);
-ULONGLONG RunCount(PUCHAR run);
-BOOL FindRun(PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, PULONGLONG lcn, PULONGLONG count);
-
-DWORD ReadDataLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PUCHAR buffer);
-DWORD ReadExternalData(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PUCHAR buffer);
-DWORD ReadData(PDISKHANDLE disk, PATTRIBUTE attr, PUCHAR buffer);
-DWORD ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, PSTATUSINFO info);
-DWORD ReadMFTParse2(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
-DWORD ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, PSTATUSINFO info);
-DWORD ReadMFTLCN2(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
-
-DWORD ProcessBuffer(PDISKHANDLE disk, PUCHAR buffer, DWORD size, FETCHPROC fetch);
-
-BOOL ReparseDisk(PDISKHANDLE disk, UINT option, PSTATUSINFO info);
+#endif

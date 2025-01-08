@@ -188,7 +188,7 @@ int main()
             else
             {
                 DWORD progressValue;
-                ParseMFT2(diskHandle, SEARCHINFO, &progressValue);
+                ParseMFT(diskHandle, SEARCHINFO, &progressValue);
                 printf("Number of loaded NTFS entries : %d\n", int(progressValue));
 
                 wchar_t* filename = (wchar_t*) L"*.ftxb";
