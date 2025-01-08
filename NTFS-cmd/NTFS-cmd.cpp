@@ -31,41 +31,44 @@ typedef struct SearchResult
 }*PSearchResult;
 
 
-int SearchFiles2(PDISKHANDLE disk, TCHAR *filename, bool deleted, bool caseSensitive, SEARCHP* pat, std::vector<SearchResult> & outResults)
+int SearchFiles2(DISKHANDLE* disk, TCHAR *filename, bool deleted, bool caseSensitive, SEARCHP* pat, std::vector<SearchResult> & outResults)
 {
+    if (disk->fFiles.empty())
+        return 0;
+
     int hit = 0;
     WCHAR tmp[0xffff];
-    SEARCHFILEINFO *info;
     if (caseSensitive == false)
     {
         _wcslwr(filename);
     }
-    info = disk->fFiles;
+    
+    SEARCHFILEINFO* fileInfo = &disk->fFiles[0];
 
     for (int i = 0; i < disk->filesSize; i++)
     {
-        if (deleted || ((info[i].Flags & 0x1) != 0))
+        if (deleted || ((fileInfo[i].Flags & 0x1) != 0))
         {
-            if (info[i].FileName != nullptr)
+            if (fileInfo[i].FileName.empty() == false)
             {
                 bool ok;
                 if (caseSensitive == false)
                 {
-                    memcpy(tmp, info[i].FileName, info[i].FileNameLength * sizeof(TCHAR) + 2);
+                    memcpy(tmp, fileInfo[i].FileName.c_str(), fileInfo[i].FileName.size() * sizeof(TCHAR) + 2);
                     _wcslwr(tmp);
-                    ok = SearchStr(pat, (wchar_t*)tmp, info[i].FileNameLength);
+                    ok = SearchStr(pat, (wchar_t*)tmp, fileInfo[i].FileName.size());
                 }
                 else
                 {
-                    ok = SearchStr(pat, const_cast<wchar_t*>(info[i].FileName), info[i].FileNameLength);
+                    ok = SearchStr(pat, const_cast<wchar_t*>(fileInfo[i].FileName.c_str()), fileInfo[i].FileName.size());
                 }
                 if (ok)
                 {
                     const wstring path = GetPath(disk, i);
-                    const auto filename = const_cast<LPTSTR>(info[i].FileName);
-                    const auto icon = info[i].Flags;
+                    const auto filename = const_cast<LPTSTR>(fileInfo[i].FileName.c_str());
+                    const auto icon = fileInfo[i].Flags;
 
-                    if (info[i].DataSize == 0 && info[i].Flags != 0x002) // not directory
+                    if (fileInfo[i].DataSize == 0 && fileInfo[i].Flags != 0x002) // not directory
                     {
                         WCHAR filePath[0x10000];
                         PathCombineW(filePath, path.c_str(), filename);
@@ -76,29 +79,30 @@ int SearchFiles2(PDISKHANDLE disk, TCHAR *filename, bool deleted, bool caseSensi
                             OPEN_EXISTING,
                             FILE_ATTRIBUTE_NORMAL,
                             NULL);
+
                         if (hFile != INVALID_HANDLE_VALUE)
                         {
-                            FILE_STANDARD_INFO fileInfo {};
+                            FILE_STANDARD_INFO info {};
                             if (GetFileInformationByHandleEx(
                                 hFile,
                                 FileStandardInfo,
-                                &fileInfo,
-                                sizeof(fileInfo)))
+                                &info,
+                                sizeof(info)))
                             {
-                                info[i].DataSize = fileInfo.EndOfFile.QuadPart;
-                                info[i].AllocatedSize = fileInfo.AllocationSize.QuadPart;
+                                fileInfo[i].DataSize = info.EndOfFile.QuadPart;
+                                fileInfo[i].AllocatedSize = info.AllocationSize.QuadPart;
                             }
 
                             CloseHandle(hFile);
                         }
                     }
 
-                    const auto dataSize = info[i].DataSize;
-                    const auto allocatedSize = info[i].AllocatedSize;
+                    const auto dataSize = fileInfo[i].DataSize;
+                    const auto allocatedSize = fileInfo[i].AllocatedSize;
 
                     //LPTSTR ret;
                     LPTSTR extra;
-                    if ((info[i].Flags & 0x002) == 0)
+                    if ((fileInfo[i].Flags & 0x002) == 0)
                     {
                         auto ret = wcsrchr(filename, L'.');
                         if (ret != nullptr) {
@@ -173,7 +177,7 @@ int main()
     {
         LPCTSTR diskName = L"\\\\.\\C:";   //  name =    \\.\C:
 
-        PDISKHANDLE diskHandle = OpenDisk(diskName);
+        DISKHANDLE* diskHandle = OpenDisk(diskName);
         if (diskHandle == NULL)
         {
             printf("ERROR : Cannot open the NTFS table\n");

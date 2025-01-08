@@ -1,7 +1,11 @@
 // NTFS Structures
 
-#include "Heap.h"
+#include "windows.h"
+#include <string>
+#include <vector>
 
+using std::wstring;
+using std::vector;
 
 /* BOOT_BLOCK
 
@@ -208,21 +212,20 @@ typedef struct {
 #define UNKNOWN 0xff99ff99
 
 
-typedef struct 
+struct SEARCHFILEINFO
 {
-    LPCWSTR FileName;
-    USHORT FileNameLength;
-    USHORT Flags;  // 0x0001 InUse; 0x0002 Directory
-    ULARGE_INTEGER ParentId;
+    USHORT Flags			= 0;  // 0x0001 InUse; 0x0002 Directory
+	ULARGE_INTEGER ParentId	= {};
 
-    ULONGLONG DataSize;
-    ULONGLONG AllocatedSize;
+    ULONGLONG DataSize		= 0;
+    ULONGLONG AllocatedSize	= 0;
 
-    char data[64];
-}SEARCHFILEINFO, *PSEARCHFILEINFO;
+	char data[64]			= {};
+    wstring FileName;
+};
 
 
-typedef struct 
+struct DISKHANDLE
 {
 	HANDLE fileHandle;
 	DWORD type;
@@ -230,7 +233,6 @@ typedef struct
 	DWORD filesSize;
 	DWORD realFiles;
 	WCHAR DosDevice;
-	PHEAPBLOCK heapBlock;
 	union
 	{
 		struct
@@ -249,11 +251,9 @@ typedef struct
 		{
 			DWORD FAT;
 		} FAT;
-
-
-        SEARCHFILEINFO *fFiles;
 	};
-}DISKHANDLE, *PDISKHANDLE;
+    vector<SEARCHFILEINFO> fFiles;
+};
 
 /* MY FUNCTIONS
 
@@ -264,35 +264,35 @@ typedef struct
 #define SEARCHINFO		3
 #define EXTRALONGINFO	4
 
-typedef DWORD(__cdecl *FETCHPROC)(PDISKHANDLE, PFILE_RECORD_HEADER, PUCHAR);
+typedef DWORD(__cdecl *FETCHPROC)(DISKHANDLE*, PFILE_RECORD_HEADER, PUCHAR);
 
 // Functions
-PDISKHANDLE OpenDisk(LPCTSTR disk);
-PDISKHANDLE OpenDisk(WCHAR DosDevice);
+DISKHANDLE* OpenDisk(LPCTSTR disk);
+DISKHANDLE* OpenDisk(WCHAR DosDevice);
 
-BOOL		CloseDisk(PDISKHANDLE disk);
-ULONGLONG	LoadMFT(PDISKHANDLE disk, BOOL complete);
+BOOL		CloseDisk(DISKHANDLE* disk);
+ULONGLONG	LoadMFT(DISKHANDLE* disk, BOOL complete);
 
-DWORD		ParseMFT(PDISKHANDLE disk, UINT option, DWORD* progressValue);
-BOOL		ReparseDisk(PDISKHANDLE disk, UINT option, DWORD* progressValue);
+DWORD		ParseMFT(DISKHANDLE* disk, UINT option, DWORD* progressValue);
+BOOL		ReparseDisk(DISKHANDLE* disk, UINT option, DWORD* progressValue);
 
-LPWSTR		GetPath(PDISKHANDLE disk, int id);
+LPWSTR		GetPath(DISKHANDLE* disk, int id);
 
 // Internal
 BOOL		FixFileRecord(PFILE_RECORD_HEADER file);
 
 PATTRIBUTE	FindAttribute(PFILE_RECORD_HEADER file, ATTRIBUTE_TYPE type);
 
-BOOL		FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* data);
+BOOL		FetchSearchInfo(DISKHANDLE* disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* data);
 
 ULONG		RunLength(PUCHAR run);
 LONGLONG	RunLCN(PUCHAR run);
 ULONGLONG	RunCount(PUCHAR run);
 BOOL		FindRun(PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, PULONGLONG lcn, PULONGLONG count);
-DWORD		ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
-DWORD		ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
-DWORD		ProcessBuffer(PDISKHANDLE disk, PUCHAR buffer, DWORD size, FETCHPROC fetch);
+DWORD		ReadMFTParse(DISKHANDLE* disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
+DWORD		ReadMFTLCN(DISKHANDLE* disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue);
+DWORD		ProcessBuffer(DISKHANDLE* disk, PUCHAR buffer, DWORD size, FETCHPROC fetch);
 
 #if 0
-LPWSTR GetCompletePath(PDISKHANDLE disk, int id);
+LPWSTR GetCompletePath(DISKHANDLE* disk, int id);
 #endif

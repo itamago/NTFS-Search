@@ -133,14 +133,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FixList.cpp" />
-    <ClCompile Include="Heap.cpp" />
     <ClCompile Include="NTFS-cmd.cpp" />
     <ClCompile Include="NTFS.cpp" />
     <ClCompile Include="SimplePattern.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FixList.h" />
-    <ClInclude Include="Heap.h" />
     <ClInclude Include="NTFS.h" />
     <ClInclude Include="SimplePattern.h" />
   </ItemGroup>

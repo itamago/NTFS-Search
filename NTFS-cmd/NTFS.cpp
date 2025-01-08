@@ -3,9 +3,6 @@
 #include "commctrl.h"
 #include "FixList.h"
 
-// HEAPHeap
-PHEAPBLOCK currentBlock = nullptr;
-
 enum { CLUSTERSPERREAD = 1024 };
 
 ULONGLONG AttributeLength(PATTRIBUTE attr) 
@@ -20,7 +17,7 @@ ULONGLONG AttributeLengthAllocated(PATTRIBUTE attr)
     return attr->Nonresident ? PNONRESIDENT_ATTRIBUTE(attr)->AllocatedSize : PRESIDENT_ATTRIBUTE(attr)->ValueLength;
 }
 
-PDISKHANDLE OpenDisk(WCHAR DosDevice)
+DISKHANDLE* OpenDisk(WCHAR DosDevice)
 {
     WCHAR path[8];
     path[0] = L'\\';
@@ -30,7 +27,7 @@ PDISKHANDLE OpenDisk(WCHAR DosDevice)
     path[4] = DosDevice;
     path[5] = L':';
     path[6] = L'\0';
-    PDISKHANDLE disk;
+    DISKHANDLE* disk;
     disk = OpenDisk(path);
     if (disk != nullptr)
     {
@@ -40,9 +37,9 @@ PDISKHANDLE OpenDisk(WCHAR DosDevice)
     return nullptr;
 }
 
-PDISKHANDLE OpenDisk(LPCTSTR disk)
+DISKHANDLE* OpenDisk(LPCTSTR disk)
 {
-    PDISKHANDLE tmpDisk;
+    DISKHANDLE* tmpDisk;
     DWORD read;
     tmpDisk = new DISKHANDLE;
     memset(tmpDisk, 0, sizeof(DISKHANDLE));
@@ -61,14 +58,13 @@ PDISKHANDLE OpenDisk(LPCTSTR disk)
                 tmpDisk->NTFS.complete = FALSE;
                 tmpDisk->NTFS.MFTLocation.QuadPart = tmpDisk->NTFS.bootSector.MftStartLcn * tmpDisk->NTFS.BytesPerCluster;
                 tmpDisk->NTFS.MFT = nullptr;
-                tmpDisk->heapBlock = nullptr;
                 tmpDisk->IsLong = 0;
                 tmpDisk->NTFS.sizeMFT = 0;
             }
             else
             {
                 tmpDisk->type = UNKNOWN;
-                tmpDisk->fFiles = nullptr;
+                tmpDisk->fFiles.clear();
             }
         }
         return tmpDisk;
@@ -78,7 +74,7 @@ PDISKHANDLE OpenDisk(LPCTSTR disk)
     return nullptr;
 };
 
-BOOL CloseDisk(PDISKHANDLE disk)
+BOOL CloseDisk(DISKHANDLE* disk)
 {
     if (disk != nullptr)
     {
@@ -96,13 +92,6 @@ BOOL CloseDisk(PDISKHANDLE disk)
             }
             disk->NTFS.Bitmap = nullptr;
         }
-        if (disk->heapBlock != nullptr)
-        {
-            FreeHeap(disk->heapBlock);
-            disk->heapBlock = nullptr;
-        }
-
-        delete[] disk->fFiles;
 
         delete disk;
         return TRUE;
@@ -111,7 +100,7 @@ BOOL CloseDisk(PDISKHANDLE disk)
 };
 
 
-ULONGLONG LoadMFT(PDISKHANDLE disk, BOOL complete)
+ULONGLONG LoadMFT(DISKHANDLE* disk, BOOL complete)
 {
     DWORD read;
     ULARGE_INTEGER offset;
@@ -136,9 +125,6 @@ ULONGLONG LoadMFT(PDISKHANDLE disk, BOOL complete)
         PNONRESIDENT_ATTRIBUTE nattr(nullptr);
         if (file->Ntfs.Type == 'ELIF')
         {
-            //PFILENAME_ATTRIBUTE fn;
-            // ???
-            //PLONGFILEINFO data = (PLONGFILEINFO) buf;
             PNONRESIDENT_ATTRIBUTE nattr2(nullptr);
             auto attr = reinterpret_cast<PATTRIBUTE>(reinterpret_cast<PUCHAR>(file) + file->AttributesOffset);
             int stop = min(8, file->NextAttributeNumber);
@@ -223,7 +209,7 @@ PATTRIBUTE FindAttribute(PFILE_RECORD_HEADER file, ATTRIBUTE_TYPE type)
     return nullptr;
 }
 
-DWORD ParseMFT(PDISKHANDLE disk, UINT option, DWORD* progressValue)
+DWORD ParseMFT(DISKHANDLE* disk, UINT option, DWORD* progressValue)
 {
     if (disk == nullptr)
         return 0;
@@ -237,9 +223,6 @@ DWORD ParseMFT(PDISKHANDLE disk, UINT option, DWORD* progressValue)
 
         disk->IsLong = 1;//sizeof(SEARCHFILEINFO);
 
-        if (disk->heapBlock == nullptr) {
-            disk->heapBlock = CreateHeap(0x100000);
-        }
         auto nattr = reinterpret_cast<PNONRESIDENT_ATTRIBUTE>(FindAttribute(fh, Data));
         if (nattr != nullptr)
         {
@@ -254,7 +237,7 @@ DWORD ParseMFT(PDISKHANDLE disk, UINT option, DWORD* progressValue)
     return 0;
 }
 
-DWORD ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+DWORD ReadMFTParse(DISKHANDLE* disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
 {
     ULONGLONG lcn, runcount;
     ULONG readcount, left;
@@ -262,8 +245,7 @@ DWORD ReadMFTParse(PDISKHANDLE disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn,
     auto bytes = PUCHAR(buffer);
 
     int x = (disk->NTFS.entryCount + 16);
-    disk->fFiles = new SEARCHFILEINFO[x];
-    memset(disk->fFiles, 0, x * sizeof(SEARCHFILEINFO));
+    disk->fFiles.resize(x);
 
     for (left = count; left > 0; left -= readcount)
     {
@@ -345,7 +327,7 @@ BOOL FindRun(PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, PULONGLONG lcn, PULONGL
     return FALSE;
 }
 
-DWORD ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+DWORD ReadMFTLCN(DISKHANDLE* disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
 {
     LARGE_INTEGER offset;
     DWORD read = 0;
@@ -377,27 +359,27 @@ DWORD ReadMFTLCN(PDISKHANDLE disk, ULONGLONG lcn, ULONG count, PVOID buffer, FET
     return pos;
 }
 
-DWORD ProcessBuffer(PDISKHANDLE disk, PUCHAR buffer, DWORD size, FETCHPROC fetch)
+DWORD ProcessBuffer(DISKHANDLE* disk, PUCHAR buffer, DWORD size, FETCHPROC fetch)
 {
     auto end = PUCHAR(buffer) + size;
-    SEARCHFILEINFO* data = disk->fFiles + disk->filesSize;
+    SEARCHFILEINFO* fileInfo = &disk->fFiles[disk->filesSize];
 
     while (buffer < end)
     {
         auto fh = PFILE_RECORD_HEADER(buffer);
         FixFileRecord(fh);
-        if (FetchSearchInfo(disk, fh, data)) {
+        if (FetchSearchInfo(disk, fh, fileInfo)) 
+        {
             disk->realFiles++;
         }
         buffer += disk->NTFS.BytesPerFileRecord;
-        //data += sizeof(SEARCHFILEINFO);
-        ++data;
+        ++fileInfo;
         disk->filesSize++;
     }
     return 0;
 }
 
-BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* data)
+BOOL FetchSearchInfo(DISKHANDLE* disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO* fileInfo)
 {
     PFILENAME_ATTRIBUTE fn;
     auto attr = reinterpret_cast<PATTRIBUTE>(reinterpret_cast<PUCHAR>(file) + file->AttributesOffset);
@@ -409,7 +391,7 @@ BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO*
 
     if (file->Ntfs.Type == 'ELIF')
     {
-        data->Flags = file->Flags;
+        fileInfo->Flags = file->Flags;
 
         for (int i = 0; i < stop; i++)
         {
@@ -424,15 +406,15 @@ BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO*
                 if (((fn->NameType & WIN32_NAME) != 0) || fn->NameType == 0)
                 {
                     fn->Name[fn->NameLength] = L'\0';
-                    data->FileName = AllocAndCopyString(disk->heapBlock, fn->Name, fn->NameLength);
-                    data->FileNameLength = min(fn->NameLength, wcslen(data->FileName));
-                    data->ParentId.QuadPart = fn->DirectoryFileReferenceNumber;
-                    data->ParentId.HighPart &= 0x0000ffff;
+                    fileInfo->FileName.clear();
+                    fileInfo->FileName.append(fn->Name, fn->NameLength);
+                    fileInfo->ParentId.QuadPart = fn->DirectoryFileReferenceNumber;
+                    fileInfo->ParentId.HighPart &= 0x0000ffff;
 
                     if (fn->DataSize || fn->AllocatedSize)
                     {
-                        data->DataSize = fn->DataSize;
-                        data->AllocatedSize = fn->AllocatedSize;
+                        fileInfo->DataSize = fn->DataSize;
+                        fileInfo->AllocatedSize = fn->AllocatedSize;
                     }
 
                     if (file->BaseFileRecord.LowPart != 0)// && file->BaseFileRecord.HighPart !=0x10000)
@@ -449,9 +431,9 @@ BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO*
             case Data:
                 if (!attr->Nonresident && PRESIDENT_ATTRIBUTE(attr)->ValueLength > 0)
                 {
-                    memcpy(data->data,
+                    memcpy(fileInfo->data,
                         PUCHAR(attr) + PRESIDENT_ATTRIBUTE(attr)->ValueOffset,
-                        min(sizeof(data->data), PRESIDENT_ATTRIBUTE(attr)->ValueLength));
+                        min(sizeof(fileInfo->data), PRESIDENT_ATTRIBUTE(attr)->ValueLength));
 
                     if (fileNameFound && fileSizeFound) {
                         return TRUE;
@@ -461,8 +443,8 @@ BOOL FetchSearchInfo(PDISKHANDLE disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO*
             case ZeroValue: // falls through
                 if (AttributeLength(attr) > 0 || AttributeLengthAllocated(attr) > 0)
                 {
-                    data->DataSize = max(data->DataSize, AttributeLength(attr));
-                    data->AllocatedSize = max(data->AllocatedSize, AttributeLengthAllocated(attr));
+                    fileInfo->DataSize = max(fileInfo->DataSize, AttributeLength(attr));
+                    fileInfo->AllocatedSize = max(fileInfo->AllocatedSize, AttributeLengthAllocated(attr));
                     if (fileNameFound && dataFound) {
                         return TRUE;
                     }
@@ -507,7 +489,7 @@ BOOL FixFileRecord(PFILE_RECORD_HEADER file)
     return TRUE;
 }
 
-BOOL ReparseDisk(PDISKHANDLE disk, UINT option, DWORD* progressValue)
+BOOL ReparseDisk(DISKHANDLE* disk, UINT option, DWORD* progressValue)
 {
     if (disk != nullptr)
     {
@@ -522,12 +504,7 @@ BOOL ReparseDisk(PDISKHANDLE disk, UINT option, DWORD* progressValue)
             }
             disk->NTFS.Bitmap = nullptr;
         }
-        if (disk->heapBlock != nullptr)
-        {
-            ReUseBlocks(disk->heapBlock, FALSE);
-        }
-        delete[] disk->fFiles;
-        disk->fFiles = nullptr;
+        disk->fFiles.clear();
 
         disk->filesSize = 0;
         disk->realFiles = 0;
@@ -540,12 +517,11 @@ BOOL ReparseDisk(PDISKHANDLE disk, UINT option, DWORD* progressValue)
     return FALSE;
 };
 
-LPWSTR GetPath(PDISKHANDLE disk, int id)
+#if 1
+LPWSTR GetPath(DISKHANDLE* disk, int id)
 {
     int a = id;
-    //int i;
     DWORD pt;
-    //PUCHAR ptr = (PUCHAR)disk->sFiles;
     DWORD PathStack[64];
     int PathStackPos = 0;
     static WCHAR glPath[0xffff];
@@ -556,7 +532,6 @@ LPWSTR GetPath(PDISKHANDLE disk, int id)
     {
         PathStack[PathStackPos++] = a;
         pt = a*disk->IsLong;
-        //a = PSEARCHFILEINFO(ptr+pt)->ParentId.LowPart;
         a = disk->fFiles[pt].ParentId.LowPart;
 
         if (a == 0 || a == 5) {
@@ -576,18 +551,57 @@ LPWSTR GetPath(PDISKHANDLE disk, int id)
     {
         pt = PathStack[i] * disk->IsLong;
         glPath[CurrentPos++] = L'\\';
-        //memcpy(&glPath[CurrentPos], PSEARCHFILEINFO(ptr+pt)->FileName, PSEARCHFILEINFO(ptr+pt)->FileNameLength*2);
-        //CurrentPos+=PSEARCHFILEINFO(ptr+pt)->FileNameLength;
-        memcpy(&glPath[CurrentPos], disk->fFiles[pt].FileName, disk->fFiles[pt].FileNameLength * 2);
-        CurrentPos += disk->fFiles[pt].FileNameLength;
+        memcpy(&glPath[CurrentPos], disk->fFiles[pt].FileName.c_str(), disk->fFiles[pt].FileName.size() * 2);
+        CurrentPos += disk->fFiles[pt].FileName.size();
     }
     glPath[CurrentPos] = L'\\';
     glPath[CurrentPos + 1] = L'\0';
     return glPath;
 }
+#else
+wstring GetPath(DISKHANDLE* disk, int id)
+{
+    int a = id;
+    DWORD pt;
+    DWORD PathStack[64];
+    int PathStackPos = 0;
+    wstring glPath;
+
+    PathStackPos = 0;
+    for (int i = 0; i < 64; i++)
+    {
+        PathStack[PathStackPos++] = a;
+        pt = a*disk->IsLong;
+        a = disk->fFiles[pt].ParentId.LowPart;
+
+        if (a == 0 || a == 5) {
+            break;
+        }
+    }
+
+    int CurrentPos = 0;
+    if (disk->DosDevice != NULL)
+    {
+        glPath.resize(2);
+        glPath[0] = disk->DosDevice;
+        glPath[1] = L':';
+        CurrentPos = 2;
+    }
+
+    for (int i = PathStackPos - 1; i > 0; i--)
+    {
+        pt = PathStack[i] * disk->IsLong;
+        glPath.push_back(L'\\');
+        glPath.append(disk->fFiles[pt].FileName);
+    }
+    glPath.push_back(L'\\');
+    glPath.push_back(L'\0');
+    return glPath;
+}
+#endif
 
 #if 0
-LPWSTR GetCompletePath(PDISKHANDLE disk, int id)
+LPWSTR GetCompletePath(DISKHANDLE* disk, int id)
 {
     int a = id;
     //int i;
@@ -603,7 +617,6 @@ LPWSTR GetCompletePath(PDISKHANDLE disk, int id)
     {
         PathStack[PathStackPos++] = a;
         pt = a*disk->IsLong;
-        //a = PSEARCHFILEINFO(ptr+pt)->ParentId.LowPart;
         a = disk->fFiles[pt].ParentId.LowPart;
 
         if (a == 0 || a == 5) {
@@ -623,8 +636,6 @@ LPWSTR GetCompletePath(PDISKHANDLE disk, int id)
     {
         pt = PathStack[i] * disk->IsLong;
         glPath[CurrentPos++] = L'\\';
-        //memcpy(&glPath[CurrentPos], PSEARCHFILEINFO(ptr+pt)->FileName, PSEARCHFILEINFO(ptr+pt)->FileNameLength*2);
-        //CurrentPos+=PSEARCHFILEINFO(ptr+pt)->FileNameLength;
         memcpy(&glPath[CurrentPos], disk->fFiles[pt].FileName, disk->fFiles[pt].FileNameLength * 2);
         CurrentPos += disk->fFiles[pt].FileNameLength;
     }

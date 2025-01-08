@@ -27,9 +27,6 @@
     <ClCompile Include="NTFS.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Heap.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="SimplePattern.h">
@@ -40,9 +37,6 @@
     </ClInclude>
     <ClInclude Include="NTFS.h">
       <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Heap.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

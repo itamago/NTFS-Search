@@ -22,15 +22,13 @@ void CreateFixList()
 	curfix = fixlist;
 }
 
-void ProcessFixList(PDISKHANDLE disk)
+void ProcessFixList(DISKHANDLE* disk)
 {
 	while (fixlist->next!=nullptr)
 	{
 		auto info = &disk->fFiles[fixlist->entry];
 		auto src = &disk->fFiles[fixlist->data];
 		info->FileName = src->FileName;
-		info->FileNameLength = src->FileNameLength;
-		
 		info->ParentId = src->ParentId;
 		// hide all that we used for cleanup
 		src->ParentId.QuadPart = 0;

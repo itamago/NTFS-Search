@@ -17,4 +17,4 @@ struct LINKITEM
 
 void AddToFixList(int entry, int data);
 void CreateFixList();
-void ProcessFixList(PDISKHANDLE disk);
+void ProcessFixList(DISKHANDLE* disk);
