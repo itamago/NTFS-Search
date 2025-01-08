@@ -227,7 +227,7 @@ DWORD ParseMFT(DISKHANDLE* disk, UINT option, DWORD* progressValue)
         if (nattr != nullptr)
         {
             auto buffer = new UCHAR[CLUSTERSPERREAD*disk->NTFS.BytesPerCluster];
-            ReadMFTParse(disk, nattr, 0, ULONG(nattr->HighVcn) + 1, buffer, nullptr, progressValue);
+            ReadMFTParse(disk, nattr, 0, ULONG(nattr->HighVcn) + 1, buffer, progressValue);
             delete[] buffer;
         }
 
@@ -237,7 +237,7 @@ DWORD ParseMFT(DISKHANDLE* disk, UINT option, DWORD* progressValue)
     return 0;
 }
 
-DWORD ReadMFTParse(DISKHANDLE* disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+DWORD ReadMFTParse(DISKHANDLE* disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, ULONG count, PVOID buffer, DWORD* progressValue)
 {
     ULONGLONG lcn, runcount;
     ULONG readcount, left;
@@ -259,7 +259,7 @@ DWORD ReadMFTParse(DISKHANDLE* disk, PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn,
         }
         else
         {
-            ret += ReadMFTLCN(disk, lcn, readcount, buffer, fetch, progressValue);
+            ret += ReadMFTLCN(disk, lcn, readcount, buffer, progressValue);
         }
         vcn += readcount;
         bytes += n;
@@ -327,7 +327,7 @@ BOOL FindRun(PNONRESIDENT_ATTRIBUTE attr, ULONGLONG vcn, PULONGLONG lcn, PULONGL
     return FALSE;
 }
 
-DWORD ReadMFTLCN(DISKHANDLE* disk, ULONGLONG lcn, ULONG count, PVOID buffer, FETCHPROC fetch, DWORD* progressValue)
+DWORD ReadMFTLCN(DISKHANDLE* disk, ULONGLONG lcn, ULONG count, PVOID buffer, DWORD* progressValue)
 {
     LARGE_INTEGER offset;
     DWORD read = 0;
@@ -341,25 +341,23 @@ DWORD ReadMFTLCN(DISKHANDLE* disk, ULONGLONG lcn, ULONG count, PVOID buffer, FET
 
     for (int i = 1; i <= cnt; i++)
     {
-
         ReadFile(disk->fileHandle, buffer, CLUSTERSPERREAD*disk->NTFS.BytesPerCluster, &read, nullptr);
         c += CLUSTERSPERREAD;
         pos += read;
 
-        ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read, fetch);
+        ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read);
         *progressValue = disk->filesSize;
-
     }
 
     ReadFile(disk->fileHandle, buffer, (count - c)*disk->NTFS.BytesPerCluster, &read, nullptr);
-    ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read, fetch);
+    ProcessBuffer(disk, static_cast<PUCHAR>(buffer), read);
     *progressValue = disk->filesSize;
 
     pos += read;
     return pos;
 }
 
-DWORD ProcessBuffer(DISKHANDLE* disk, PUCHAR buffer, DWORD size, FETCHPROC fetch)
+DWORD ProcessBuffer(DISKHANDLE* disk, PUCHAR buffer, DWORD size)
 {
     auto end = PUCHAR(buffer) + size;
     SEARCHFILEINFO* fileInfo = &disk->fFiles[disk->filesSize];
@@ -395,75 +393,74 @@ BOOL FetchSearchInfo(DISKHANDLE* disk, PFILE_RECORD_HEADER file, SEARCHFILEINFO*
 
         for (int i = 0; i < stop; i++)
         {
-            if (attr->AttributeType < 0 || attr->AttributeType>0x100) {
+            if (attr->AttributeType < 0 || attr->AttributeType>0x100)
                 break;
-            }
 
             switch (attr->AttributeType)
             {
-            case FileName:
-                fn = PFILENAME_ATTRIBUTE(PUCHAR(attr) + PRESIDENT_ATTRIBUTE(attr)->ValueOffset);
-                if (((fn->NameType & WIN32_NAME) != 0) || fn->NameType == 0)
-                {
-                    fn->Name[fn->NameLength] = L'\0';
-                    fileInfo->FileName.clear();
-                    fileInfo->FileName.append(fn->Name, fn->NameLength);
-                    fileInfo->ParentId.QuadPart = fn->DirectoryFileReferenceNumber;
-                    fileInfo->ParentId.HighPart &= 0x0000ffff;
-
-                    if (fn->DataSize || fn->AllocatedSize)
+                case FileName:
+                    fn = PFILENAME_ATTRIBUTE(PUCHAR(attr) + PRESIDENT_ATTRIBUTE(attr)->ValueOffset);
+                    if (((fn->NameType & WIN32_NAME) != 0) || fn->NameType == 0)
                     {
-                        fileInfo->DataSize = fn->DataSize;
-                        fileInfo->AllocatedSize = fn->AllocatedSize;
-                    }
+                        fn->Name[fn->NameLength] = L'\0';
+                        fileInfo->FileName.clear();
+                        fileInfo->FileName.append(fn->Name, fn->NameLength);
+                        fileInfo->ParentId.QuadPart = fn->DirectoryFileReferenceNumber;
+                        fileInfo->ParentId.HighPart &= 0x0000ffff;
 
-                    if (file->BaseFileRecord.LowPart != 0)// && file->BaseFileRecord.HighPart !=0x10000)
+                        if (fn->DataSize || fn->AllocatedSize)
+                        {
+                            fileInfo->DataSize = fn->DataSize;
+                            fileInfo->AllocatedSize = fn->AllocatedSize;
+                        }
+
+                        if (file->BaseFileRecord.LowPart != 0)// && file->BaseFileRecord.HighPart !=0x10000)
+                        {
+                            AddToFixList(file->BaseFileRecord.LowPart, disk->filesSize);
+                        }
+
+                        if (dataFound && fileSizeFound) {
+                            return TRUE;
+                        }
+                        fileNameFound = true;
+                    }
+                    break;
+                case Data:
+                    if (!attr->Nonresident && PRESIDENT_ATTRIBUTE(attr)->ValueLength > 0)
                     {
-                        AddToFixList(file->BaseFileRecord.LowPart, disk->filesSize);
-                    }
+                        memcpy(fileInfo->data,
+                            PUCHAR(attr) + PRESIDENT_ATTRIBUTE(attr)->ValueOffset,
+                            min(sizeof(fileInfo->data), PRESIDENT_ATTRIBUTE(attr)->ValueLength));
 
-                    if (dataFound && fileSizeFound) {
-                        return TRUE;
+                        if (fileNameFound && fileSizeFound) {
+                            return TRUE;
+                        }
+                        dataFound = true;
                     }
-                    fileNameFound = true;
-                }
+                case ZeroValue: // falls through
+                    if (AttributeLength(attr) > 0 || AttributeLengthAllocated(attr) > 0)
+                    {
+                        fileInfo->DataSize = max(fileInfo->DataSize, AttributeLength(attr));
+                        fileInfo->AllocatedSize = max(fileInfo->AllocatedSize, AttributeLengthAllocated(attr));
+                        if (fileNameFound && dataFound) {
+                            return TRUE;
+                        }
+                        fileSizeFound = true;
+                    }
                 break;
-            case Data:
-                if (!attr->Nonresident && PRESIDENT_ATTRIBUTE(attr)->ValueLength > 0)
-                {
-                    memcpy(fileInfo->data,
-                        PUCHAR(attr) + PRESIDENT_ATTRIBUTE(attr)->ValueOffset,
-                        min(sizeof(fileInfo->data), PRESIDENT_ATTRIBUTE(attr)->ValueLength));
-
-                    if (fileNameFound && fileSizeFound) {
-                        return TRUE;
-                    }
-                    dataFound = true;
-                }
-            case ZeroValue: // falls through
-                if (AttributeLength(attr) > 0 || AttributeLengthAllocated(attr) > 0)
-                {
-                    fileInfo->DataSize = max(fileInfo->DataSize, AttributeLength(attr));
-                    fileInfo->AllocatedSize = max(fileInfo->AllocatedSize, AttributeLengthAllocated(attr));
-                    if (fileNameFound && dataFound) {
-                        return TRUE;
-                    }
-                    fileSizeFound = true;
-                }
-            break;
-            default:
-                break;
+                default:
+                    break;
             };
 
 
-            if (attr->Length > 0 && attr->Length < file->BytesInUse) {
+            if (attr->Length > 0 && attr->Length < file->BytesInUse)
+            {
                 attr = PATTRIBUTE(PUCHAR(attr) + attr->Length);
             }
-            else
-                if (attr->Nonresident == TRUE) {
-                    attr = PATTRIBUTE(PUCHAR(attr) + sizeof(NONRESIDENT_ATTRIBUTE));
-                }
-
+            else if (attr->Nonresident == TRUE) 
+            {
+                attr = PATTRIBUTE(PUCHAR(attr) + sizeof(NONRESIDENT_ATTRIBUTE));
+            }
         }
     }
     return fileNameFound;

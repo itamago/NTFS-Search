@@ -2,12 +2,12 @@
 
 struct SEARCHP
 {
-	int mode;
-	wchar_t* string;
-	int len;
-	wchar_t* extra;
-	int extralen;
-	int totallen;
+    int mode;
+    wchar_t* string;
+    int len;
+    wchar_t* extra;
+    int extralen;
+    int totallen;
 };
 
 SEARCHP* StartSearch(wchar_t* string, int len);

@@ -9,9 +9,9 @@
 // LinkedList
 struct LINKITEM
 {
-	unsigned int data;
-	unsigned int entry;
-	LINKITEM *next;
+    unsigned int data;
+    unsigned int entry;
+    LINKITEM *next;
 };
 
 
