@@ -43,10 +43,10 @@ struct BOOT_BLOCK
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct NTFS_RECORD_HEADER
 {
-    ULONG   Type;
-    USHORT  UsaOffset;
-    USHORT  UsaCount;
-    USN     Usn;
+    ULONG       Type;
+    USHORT      UsaOffset;
+    USHORT      UsaCount;
+    USN         Usn;
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -68,7 +68,7 @@ struct FILE_RECORD_HEADER
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ATTRIBUTE_TYPE enumeration
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-enum ATTRIBUTE_TYPE
+enum class AttributeType : int
 {
     ZeroValue           = 0,
     StandardInformation = 0x10,
@@ -94,7 +94,7 @@ enum ATTRIBUTE_TYPE
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct ATTRIBUTE
 {
-    ATTRIBUTE_TYPE  AttributeType;
+    AttributeType   AttribType;
     ULONG           Length;
     BOOLEAN         Nonresident;
     UCHAR           NameLength; 
@@ -108,10 +108,10 @@ struct ATTRIBUTE
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct RESIDENT_ATTRIBUTE
 {
-    ATTRIBUTE   Attribute;
-    ULONG       ValueLength;
-    USHORT      ValueOffset;    // Starts from the Attribute
-    USHORT      Flags;          // 0x0001 Indexed
+    ATTRIBUTE       Attribute;
+    ULONG           ValueLength;
+    USHORT          ValueOffset;    // Starts from the Attribute
+    USHORT          Flags;          // 0x0001 Indexed
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -119,16 +119,16 @@ struct RESIDENT_ATTRIBUTE
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct NONRESIDENT_ATTRIBUTE
 {
-    ATTRIBUTE   Attribute;
-    ULONGLONG   LowVcn;
-    ULONGLONG   HighVcn;
-    USHORT      RunArrayOffset;
-    UCHAR       CompressionUnit;
-    UCHAR       AligmentOrReserved[5];
-    ULONGLONG   AllocatedSize;
-    ULONGLONG   DataSize;
-    ULONGLONG   InitializedSize;
-    ULONGLONG   CompressedSize;     //Only when compressed
+    ATTRIBUTE       Attribute;
+    ULONGLONG       LowVcn;
+    ULONGLONG       HighVcn;
+    USHORT          RunArrayOffset;
+    UCHAR           CompressionUnit;
+    UCHAR           AligmentOrReserved[5];
+    ULONGLONG       AllocatedSize;
+    ULONGLONG       DataSize;
+    ULONGLONG       InitializedSize;
+    ULONGLONG       CompressedSize;     //Only when compressed
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -144,16 +144,16 @@ struct NONRESIDENT_ATTRIBUTE
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct STANDARD_INFORMATION
 {
-    FILETIME    CreationTime;
-    FILETIME    ChangeTime;
-    FILETIME    LastWriteTime;
-    FILETIME    LastAccessTime;
-    ULONG       FileAttributes;
-    ULONG       AligmentOrReservedOrUnknown[3];
-    ULONG       QuotaId;        //NTFS 3.0 or higher
-    ULONG       SecurityID;     //NTFS 3.0 or higher
-    ULONGLONG   QuotaCharge;    //NTFS 3.0 or higher
-    USN         Usn;            //NTFS 3.0 or higher
+    FILETIME        CreationTime;
+    FILETIME        ChangeTime;
+    FILETIME        LastWriteTime;
+    FILETIME        LastAccessTime;
+    ULONG           FileAttributes;
+    ULONG           AligmentOrReservedOrUnknown[3];
+    ULONG           QuotaId;        //NTFS 3.0 or higher
+    ULONG           SecurityID;     //NTFS 3.0 or higher
+    ULONGLONG       QuotaCharge;    //NTFS 3.0 or higher
+    USN             Usn;            //NTFS 3.0 or higher
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -161,7 +161,7 @@ struct STANDARD_INFORMATION
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct ATTRIBUTE_LIST
 {
-    ATTRIBUTE_TYPE  Attribute;
+    AttributeType  Attribute;
     USHORT          Length;
     UCHAR           NameLength;
     USHORT          NameOffset;     // starts at structure begin
@@ -177,18 +177,18 @@ struct ATTRIBUTE_LIST
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 struct FILENAME_ATTRIBUTE
 {
-    ULONGLONG   DirectoryFileReferenceNumber;   //points to a MFT Index of a directory
-    FILETIME    CreationTime;                   //saved on creation, changed when filename changes
-    FILETIME    ChangeTime;
-    FILETIME    LastWriteTime;
-    FILETIME    LastAccessTime;
-    ULONGLONG   AllocatedSize;
-    ULONGLONG   DataSize; 
-    ULONG       FileAttributes;
-    ULONG       AligmentOrReserved;
-    UCHAR       NameLength;
-    UCHAR       NameType;       // 0x01 Long, 0x02 Short, 0x00 Posix?
-    WCHAR       Name[1];
+    ULONGLONG       DirectoryFileReferenceNumber;   //points to a MFT Index of a directory
+    FILETIME        CreationTime;                   //saved on creation, changed when filename changes
+    FILETIME        ChangeTime;
+    FILETIME        LastWriteTime;
+    FILETIME        LastAccessTime;
+    ULONGLONG       AllocatedSize;
+    ULONGLONG       DataSize; 
+    ULONG           FileAttributes;
+    ULONG           AligmentOrReserved;
+    UCHAR           NameLength;
+    UCHAR           NameType;       // 0x01 Long, 0x02 Short, 0x00 Posix?
+    WCHAR           Name[1];
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -263,7 +263,7 @@ LPWSTR      GetPath(DISKHANDLE* disk, int id);
 // Internal
 bool        FixFileRecord(FILE_RECORD_HEADER* file);
 
-ATTRIBUTE*  FindAttribute(FILE_RECORD_HEADER* file, ATTRIBUTE_TYPE type);
+ATTRIBUTE*  FindAttribute(FILE_RECORD_HEADER* file, AttributeType type);
 
 bool        FetchSearchInfo(DISKHANDLE* disk, FILE_RECORD_HEADER* file, SEARCHFILEINFO* data);
 

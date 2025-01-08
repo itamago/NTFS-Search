@@ -187,7 +187,7 @@ int main()
         }
         else
         {
-            ULONGLONG resLoad = LoadMFT(diskHandle, FALSE /*complete*/);
+            ULONGLONG resLoad = LoadMFT(diskHandle, false /*complete*/);
             if (resLoad == 0)
             {
                 printf("ERROR : Cannot load the NTFS table\n");

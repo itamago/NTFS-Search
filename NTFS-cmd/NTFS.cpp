@@ -101,9 +101,9 @@ bool CloseDisk(DISKHANDLE* disk)
         }
 
         delete disk;
-        return TRUE;
+        return true;
     }
-    return FALSE;
+    return false;
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -138,32 +138,31 @@ ULONGLONG LoadMFT(DISKHANDLE* disk, bool complete)
 
             for (int i = 0; i < stop; i++)
             {
-                if (attr->AttributeType < 0 || attr->AttributeType>0x100) {
+                if (int(attr->AttribType) < 0 || int(attr->AttribType) > 0x100) 
                     break;
-                }
 
-                switch (attr->AttributeType)
+                switch (attr->AttribType)
                 {
-                case AttributeList:
-                    // now it gets tricky
-                    // we have to rebuild the data attribute
+                    case AttributeType::AttributeList:
+                        // now it gets tricky
+                        // we have to rebuild the data attribute
 
-                    // wake down the list to find all runarrays
-                    // use ReadAttribute to get the list
-                    // I think, the right order is important
+                        // wake down the list to find all runarrays
+                        // use ReadAttribute to get the list
+                        // I think, the right order is important
 
-                    // find out how to walk down the list !!!!
+                        // find out how to walk down the list !!!!
 
-                    // the only solution for now
-                    return 3;
-                    break;
-                case Data:
-                    nattr = ((NONRESIDENT_ATTRIBUTE*)attr);
-                    break;
-                case Bitmap:
-                    nattr2 = ((NONRESIDENT_ATTRIBUTE*)attr);
-                default:
-                    break;
+                        // the only solution for now
+                        return 3;
+                        break;
+                    case AttributeType::Data:
+                        nattr = ((NONRESIDENT_ATTRIBUTE*)attr);
+                        break;
+                    case AttributeType::Bitmap:
+                        nattr2 = ((NONRESIDENT_ATTRIBUTE*)attr);
+                    default:
+                        break;
                 };
 
 
@@ -193,16 +192,16 @@ ULONGLONG LoadMFT(DISKHANDLE* disk, bool complete)
 };
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-ATTRIBUTE* FindAttribute(FILE_RECORD_HEADER* file, ATTRIBUTE_TYPE type)
+ATTRIBUTE* FindAttribute(FILE_RECORD_HEADER* file, AttributeType type)
 {
     ATTRIBUTE* attr = (ATTRIBUTE*)(reinterpret_cast<PUCHAR>(file) + file->AttributesOffset);
 
     for (int i = 1; i < file->NextAttributeNumber; i++)
     {
-        if (attr->AttributeType == type)
+        if (attr->AttribType == type)
             return attr;
 
-        if (attr->AttributeType < 1 || attr->AttributeType>0x100)
+        if (int(attr->AttribType) < 1 || int(attr->AttribType) > 0x100)
             break;
 
         if (attr->Length > 0 && attr->Length < file->BytesInUse)
@@ -232,7 +231,7 @@ DWORD ParseMFT(DISKHANDLE* disk, UINT option, DWORD* progressValue)
 
         disk->IsLong = 1;//sizeof(SEARCHFILEINFO);
 
-        NONRESIDENT_ATTRIBUTE* nattr = ((NONRESIDENT_ATTRIBUTE*)FindAttribute(fh, Data));
+        NONRESIDENT_ATTRIBUTE* nattr = ((NONRESIDENT_ATTRIBUTE*)FindAttribute(fh, AttributeType::Data));
         if (nattr != nullptr)
         {
             auto buffer = new UCHAR[CLUSTERSPERREAD*disk->NTFS.BytesPerCluster];
@@ -314,9 +313,8 @@ ULONGLONG RunCount(const PUCHAR run)
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 bool FindRun(NONRESIDENT_ATTRIBUTE* attr, ULONGLONG vcn, PULONGLONG lcn, PULONGLONG count)
 {
-    if (vcn < attr->LowVcn || vcn > attr->HighVcn) {
-        return FALSE;
-    }
+    if (vcn < attr->LowVcn || vcn > attr->HighVcn)
+        return false;
     *lcn = 0;
 
     ULONGLONG base = attr->LowVcn;
@@ -329,16 +327,13 @@ bool FindRun(NONRESIDENT_ATTRIBUTE* attr, ULONGLONG vcn, PULONGLONG lcn, PULONGL
         {
             *lcn = RunLCN(run) == 0 ? 0 : *lcn + vcn - base;
             *count -= ULONG(vcn - base);
-            return TRUE;
+            return true;
         }
 
-
         base += *count;
-
-
     }
 
-    return FALSE;
+    return false;
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -416,12 +411,12 @@ bool FetchSearchInfo(DISKHANDLE* disk, FILE_RECORD_HEADER* file, SEARCHFILEINFO*
 
         for (int i = 0; i < stop; i++)
         {
-            if (attr->AttributeType < 0 || attr->AttributeType>0x100)
+            if (int(attr->AttribType) < 0 || int(attr->AttribType) >0x100)
                 break;
 
-            switch (attr->AttributeType)
+            switch (attr->AttribType)
             {
-                case FileName:
+                case AttributeType::FileName:
                     fn = (FILENAME_ATTRIBUTE*)(PUCHAR(attr) + ((RESIDENT_ATTRIBUTE*)attr)->ValueOffset);
                     if (((fn->NameType & WIN32_NAME) != 0) || fn->NameType == 0)
                     {
@@ -442,32 +437,35 @@ bool FetchSearchInfo(DISKHANDLE* disk, FILE_RECORD_HEADER* file, SEARCHFILEINFO*
                             AddToFixList(file->BaseFileRecord.LowPart, disk->filesSize);
                         }
 
-                        if (dataFound && fileSizeFound) {
-                            return TRUE;
-                        }
+                        if (dataFound && fileSizeFound)
+                            return true;
+                        
                         fileNameFound = true;
                     }
                     break;
-                case Data:
+
+                case AttributeType::Data:
                     if (!attr->Nonresident && ((RESIDENT_ATTRIBUTE*)attr)->ValueLength > 0)
                     {
                         memcpy(fileInfo->data,
                             PUCHAR(attr) + ((RESIDENT_ATTRIBUTE*)attr)->ValueOffset,
                             min(sizeof(fileInfo->data), ((RESIDENT_ATTRIBUTE*)attr)->ValueLength));
 
-                        if (fileNameFound && fileSizeFound) {
-                            return TRUE;
-                        }
+                        if (fileNameFound && fileSizeFound)
+                            return true;
+                        
                         dataFound = true;
                     }
-                case ZeroValue: // falls through
+
+                case AttributeType::ZeroValue: // falls through
                     if (AttributeLength(attr) > 0 || AttributeLengthAllocated(attr) > 0)
                     {
                         fileInfo->DataSize = max(fileInfo->DataSize, AttributeLength(attr));
                         fileInfo->AllocatedSize = max(fileInfo->AllocatedSize, AttributeLengthAllocated(attr));
-                        if (fileNameFound && dataFound) {
-                            return TRUE;
-                        }
+                        
+                        if (fileNameFound && dataFound)
+                            return true;
+                        
                         fileSizeFound = true;
                     }
                 break;
@@ -496,16 +494,16 @@ bool FixFileRecord(FILE_RECORD_HEADER* file)
     auto usa = PUSHORT(PUCHAR(file) + file->Ntfs.UsaOffset);
     auto sector = PUSHORT(file);
 
-    if (file->Ntfs.UsaCount > 4) {
-        return FALSE;
-    }
+    if (file->Ntfs.UsaCount > 4)
+        return false;
+
     for (ULONG i = 1; i < file->Ntfs.UsaCount; i++)
     {
         sector[255] = usa[i];
         sector += 256;
     }
 
-    return TRUE;
+    return true;
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -529,12 +527,13 @@ bool ReparseDisk(DISKHANDLE* disk, UINT option, DWORD* progressValue)
         disk->filesSize = 0;
         disk->realFiles = 0;
 
-        if (LoadMFT(disk, FALSE) != 0)
+        if (LoadMFT(disk, false) != 0)
             ParseMFT(disk, option, progressValue);
 
-        return TRUE;
+        return true;
     }
-    return FALSE;
+
+    return false;
 };
 
 #if 1
