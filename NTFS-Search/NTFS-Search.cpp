@@ -144,6 +144,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     LPTSTR    lpCmdLine,
     int       nCmdShow)
 {
+    FileStrings = CreateHeap(0xffff * sizeof(SearchResult));
+    PathStrings = CreateHeap(0xfff * MAX_PATH);
+
+    TestFunction();
+
+
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
@@ -184,11 +190,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     MyRegisterClass(hInstance);
 
     //SearchString(TEXT("*a*W*"),5, TEXT("Hallo Welt"),10);
-
-    FileStrings = CreateHeap(0xffff * sizeof(SearchResult));
-    PathStrings = CreateHeap(0xfff * MAX_PATH);
-
-    TestFunction();
 
     // Perform application initialization:
     if (InitInstance(hInstance, nCmdShow) == 0)
