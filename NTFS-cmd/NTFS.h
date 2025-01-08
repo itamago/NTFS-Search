@@ -8,7 +8,8 @@
 */
 #pragma pack(push,1)
 
-typedef struct {
+typedef struct
+{
 	UCHAR Jump[3];
 	UCHAR Format[8];
 	USHORT BytesPerSector;
@@ -40,7 +41,8 @@ typedef struct {
 	type - 'FILE' 'INDX' 'BAAD' 'HOLE' *CHKD'
 
 */
-typedef struct{
+typedef struct
+{
 	ULONG Type;
 	USHORT UsaOffset;
 	USHORT UsaCount;
@@ -50,7 +52,8 @@ typedef struct{
 /* FILE_RECORD_HEADER
 
 */
-typedef struct{
+typedef struct
+{
 	NTFS_RECORD_HEADER Ntfs;
 	USHORT SequenceNumber;
 	USHORT LinkCount;
@@ -66,7 +69,8 @@ typedef struct{
 
 */
 
-typedef enum {
+typedef enum 
+{
 	ZeroValue = 0,
 	StandardInformation = 0x10,
 	AttributeList = 0x20,
@@ -89,7 +93,8 @@ typedef enum {
 /* ATTRIBUTE Structure
 
 */
-typedef struct{
+typedef struct
+{
 	ATTRIBUTE_TYPE AttributeType;
 	ULONG Length;
 	BOOLEAN Nonresident;
@@ -102,7 +107,8 @@ typedef struct{
 /* ATTRIBUTE resident
 
 */
-typedef struct {
+typedef struct 
+{
 	ATTRIBUTE Attribute;
 	ULONG ValueLength;
 	USHORT ValueOffset; //Starts from the Attribute
@@ -202,10 +208,11 @@ typedef struct {
 #define UNKNOWN 0xff99ff99
 
 
-typedef struct {
+typedef struct 
+{
     LPCWSTR FileName;
     USHORT FileNameLength;
-    USHORT Flags;
+    USHORT Flags;  // 0x0001 InUse; 0x0002 Directory
     ULARGE_INTEGER ParentId;
 
     ULONGLONG DataSize;
@@ -215,7 +222,8 @@ typedef struct {
 }SEARCHFILEINFO, *PSEARCHFILEINFO;
 
 
-typedef struct {
+typedef struct 
+{
 	HANDLE fileHandle;
 	DWORD type;
 	DWORD IsLong;

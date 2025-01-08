@@ -3,7 +3,7 @@
 
 #pragma warning(disable : 4996)
 
-#include "NTFS_STRUCT.h"
+#include "NTFS.h"
 #include "SimplePattern.h"
 
 #include "shlwapi.h"  // for PathCombineW
@@ -12,17 +12,18 @@
 #include <algorithm>
 #include <memory>
 #include <vector>
+#include <string>
 
-PHEAPBLOCK FileStrings;
-PHEAPBLOCK PathStrings;
+using std::wstring;
+
 const auto MAX_RESULTS_NUMBER = 2000000;
 
 typedef struct SearchResult
 {
     int icon;
-    LPTSTR extra;
-    LPTSTR filename;
-    LPTSTR path;
+    wstring extra;
+    wstring filename;
+    wstring path;
 
     ULONGLONG dataSize;
     ULONGLONG allocatedSize;
@@ -60,16 +61,14 @@ int SearchFiles2(PDISKHANDLE disk, TCHAR *filename, bool deleted, bool caseSensi
                 }
                 if (ok)
                 {
-                    const auto t = GetPath(disk, i);
-                    const auto s = wcslen(t);
+                    const wstring path = GetPath(disk, i);
                     const auto filename = const_cast<LPTSTR>(info[i].FileName);
-                    const auto path = AllocAndCopyString(PathStrings, t, s);
                     const auto icon = info[i].Flags;
 
                     if (info[i].DataSize == 0 && info[i].Flags != 0x002) // not directory
                     {
                         WCHAR filePath[0x10000];
-                        PathCombineW(filePath, path, filename);
+                        PathCombineW(filePath, path.c_str(), filename);
                         HANDLE hFile = CreateFile(filePath,
                             GENERIC_READ,
                             FILE_SHARE_READ,
@@ -170,9 +169,6 @@ int main()
     }
     printf("Check : Admin rights are available to parse NTFS tables.\n");
 
-    FileStrings = CreateHeap(0xffff * sizeof(SearchResult));
-    PathStrings = CreateHeap(0xfff * MAX_PATH);
-
     // Test
     {
         LPCTSTR diskName = L"\\\\.\\C:";   //  name =    \\.\C:
@@ -212,9 +208,6 @@ int main()
             CloseDisk(diskHandle);
         }
     }
-
-    FreeHeap(PathStrings);
-    FreeHeap(FileStrings);
 
     _getch();
 
